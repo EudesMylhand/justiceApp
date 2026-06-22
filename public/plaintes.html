@@ -1,0 +1,351 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Plaintes — Plateforme Justice &amp; Sécurité</title>
+<link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+
+<script src="/js/api.js"></script>
+<script src="/js/layout.js"></script>
+<script>injecterLayout('plaintes', 'Gestion des plaintes');</script>
+
+<script>
+const peutCreer = (Auth.getUser()?.permissions || []).includes?.('PLAINTE_CREATE');
+</script>
+
+<script>
+definirContenuPage(`
+    <div class="panneau">
+        <div class="panneau-entete">
+            <h3>Recherche multicritère</h3>
+        </div>
+        <form id="form-recherche" style="padding: 18px 22px;">
+            <div class="grille-deux-colonnes">
+                <div class="champ">
+                    <label for="r-numero">Numéro de plainte</label>
+                    <input type="text" id="r-numero" placeholder="ex: PL-2026-000123">
+                </div>
+                <div class="champ">
+                    <label for="r-nom">Nom (victime ou suspect)</label>
+                    <input type="text" id="r-nom" placeholder="Nom ou prénom">
+                </div>
+            </div>
+            <div class="grille-deux-colonnes">
+                <div class="champ">
+                    <label for="r-statut">Statut</label>
+                    <select id="r-statut">
+                        <option value="">Tous les statuts</option>
+                        <option value="ENREGISTREE">Enregistrée</option>
+                        <option value="EN_ENQUETE">En enquête</option>
+                        <option value="TRANSMISE_PARQUET">Transmise au parquet</option>
+                        <option value="CLASSEE_SANS_SUITE">Classée sans suite</option>
+                        <option value="CLOTUREE">Clôturée</option>
+                    </select>
+                </div>
+                <div class="champ">
+                    <label for="r-nature">Nature de l'infraction</label>
+                    <input type="text" id="r-nature" placeholder="ex: vol, agression...">
+                </div>
+            </div>
+            <div class="grille-deux-colonnes">
+                <div class="champ">
+                    <label for="r-date-debut">Du</label>
+                    <input type="date" id="r-date-debut">
+                </div>
+                <div class="champ">
+                    <label for="r-date-fin">Au</label>
+                    <input type="date" id="r-date-fin">
+                </div>
+            </div>
+            <button type="submit" class="bouton-petit primaire">Rechercher</button>
+            <button type="button" class="bouton-petit" id="btn-reinitialiser">Réinitialiser</button>
+        </form>
+    </div>
+
+    <div class="panneau">
+        <div class="panneau-entete">
+            <h3>Résultats</h3>
+            <button class="bouton-petit primaire" id="btn-nouvelle-plainte" ${peutCreer ? '' : 'style="display:none;"'}>
+                + Nouvelle plainte
+            </button>
+        </div>
+        <div id="zone-chargement-plaintes" class="chargement">Chargement...</div>
+        <table id="tableau-plaintes" style="display:none;">
+            <thead>
+                <tr>
+                    <th>Numéro</th><th>Nature</th><th>Date enreg.</th><th>Localisation</th>
+                    <th>Unité</th><th>Statut</th><th>Déclarant</th><th>Actions</th>
+                </tr>
+            </thead>
+            <tbody id="corps-tableau-plaintes"></tbody>
+        </table>
+        <div id="pagination-plaintes" style="padding: 14px 22px; font-size: 13px; color: var(--gris-texte);"></div>
+    </div>
+
+    <!-- Modale de création de plainte -->
+    <div class="overlay-modal" id="modal-plainte">
+        <div class="contenu-modal">
+            <div class="entete-modal">
+                <h3>Nouvelle plainte</h3>
+                <button class="fermer-modal" id="fermer-modal-plainte">&times;</button>
+            </div>
+            <form id="form-plainte">
+                <div class="corps-modal">
+                    <div id="erreur-plainte" class="message-erreur"></div>
+
+                    <div class="champ">
+                        <label for="p-nature">Nature de l'infraction</label>
+                        <input type="text" id="p-nature" placeholder="ex: Vol avec violence" required>
+                    </div>
+
+                    <div class="champ">
+                        <label for="p-description">Description des faits</label>
+                        <textarea id="p-description" rows="4" required style="width:100%; padding:11px 13px; border:1px solid var(--gris-bordure); border-radius:4px; font-family:inherit; font-size:14px;"></textarea>
+                    </div>
+
+                    <div class="champ">
+                        <label for="p-date-infraction">Date et heure des faits</label>
+                        <input type="datetime-local" id="p-date-infraction">
+                    </div>
+
+                    <div class="grille-deux-colonnes">
+                        <div class="champ">
+                            <label for="p-departement">Département</label>
+                            <select id="p-departement" required><option value="">Sélectionner...</option></select>
+                        </div>
+                        <div class="champ">
+                            <label for="p-ville">Ville</label>
+                            <select id="p-ville" required><option value="">Sélectionner un département d'abord</option></select>
+                        </div>
+                    </div>
+
+                    <div class="grille-deux-colonnes">
+                        <div class="champ">
+                            <label for="p-arrondissement">Arrondissement</label>
+                            <select id="p-arrondissement"><option value="">Sélectionner une ville d'abord</option></select>
+                        </div>
+                        <div class="champ">
+                            <label for="p-quartier">Quartier</label>
+                            <select id="p-quartier"><option value="">Sélectionner un arrondissement d'abord</option></select>
+                        </div>
+                    </div>
+
+                    <div class="champ">
+                        <label for="p-lieu-precis">Lieu précis (complément)</label>
+                        <input type="text" id="p-lieu-precis" placeholder="ex: près du marché central">
+                    </div>
+                </div>
+                <div class="pied-modal">
+                    <button type="button" class="bouton-petit" id="annuler-plainte">Annuler</button>
+                    <button type="submit" class="bouton-petit primaire" id="btn-creer-plainte">Enregistrer la plainte</button>
+                </div>
+            </form>
+        </div>
+    </div>
+`);
+
+function badgeStatutPlainte(statut) {
+    const libelles = {
+        ENREGISTREE: ['Enregistrée', 'statut-actif'],
+        EN_ENQUETE: ['En enquête', 'statut-actif'],
+        TRANSMISE_PARQUET: ['Transmise au parquet', 'statut-actif'],
+        CLASSEE_SANS_SUITE: ['Classée sans suite', 'statut-inactif'],
+        CLOTUREE: ['Clôturée', 'statut-inactif'],
+    };
+    const [label, classe] = libelles[statut] || [statut, 'statut-inactif'];
+    return `<span class="statut-pill ${classe}">${label}</span>`;
+}
+
+let pageCourante = 1;
+
+function construireParametresRecherche() {
+    const params = new URLSearchParams();
+    const numero = document.getElementById('r-numero').value.trim();
+    const nom = document.getElementById('r-nom').value.trim();
+    const statut = document.getElementById('r-statut').value;
+    const nature = document.getElementById('r-nature').value.trim();
+    const dateDebut = document.getElementById('r-date-debut').value;
+    const dateFin = document.getElementById('r-date-fin').value;
+
+    if (numero) params.set('numero', numero);
+    if (nom) params.set('nom', nom);
+    if (statut) params.set('statut', statut);
+    if (nature) params.set('nature', nature);
+    if (dateDebut) params.set('date_debut', dateDebut);
+    if (dateFin) params.set('date_fin', dateFin);
+    params.set('page', pageCourante);
+    params.set('limit', 20);
+    return params;
+}
+
+async function chargerPlaintes() {
+    const zoneChargement = document.getElementById('zone-chargement-plaintes');
+    const tableau = document.getElementById('tableau-plaintes');
+    zoneChargement.style.display = 'block';
+    zoneChargement.textContent = 'Chargement...';
+    tableau.style.display = 'none';
+
+    try {
+        const params = construireParametresRecherche();
+        const res = await apiFetch(`/plaintes?${params.toString()}`);
+        if (!res) return;
+        if (!res.ok) {
+            zoneChargement.textContent = "Vous n'avez pas les droits pour consulter les plaintes.";
+            return;
+        }
+        const data = await res.json();
+        zoneChargement.style.display = 'none';
+        tableau.style.display = 'table';
+
+        const corps = document.getElementById('corps-tableau-plaintes');
+        if (data.plaintes.length === 0) {
+            corps.innerHTML = `<tr><td colspan="8"><div class="info-vide">Aucune plainte ne correspond à ces critères.</div></td></tr>`;
+        } else {
+            corps.innerHTML = data.plaintes.map((p) => `
+                <tr>
+                    <td><strong>${p.numero_unique}</strong></td>
+                    <td>${p.nature_infraction}</td>
+                    <td>${new Date(p.date_enregistrement).toLocaleDateString('fr-FR')}</td>
+                    <td>${p.quartier_nom ? p.quartier_nom + ', ' : ''}${p.ville_nom}</td>
+                    <td>${p.commissariat_nom || p.brigade_nom || '—'}</td>
+                    <td>${badgeStatutPlainte(p.statut)}</td>
+                    <td>${p.declarant_nom}</td>
+                    <td><button class="bouton-petit" onclick="window.location.href='/plainte-detail.html?id=${p.id}'">Consulter</button></td>
+                </tr>
+            `).join('');
+        }
+
+        const totalPages = Math.max(1, Math.ceil(data.total / 20));
+        document.getElementById('pagination-plaintes').textContent =
+            `Page ${data.page} sur ${totalPages} — ${data.total} plainte(s) au total`;
+    } catch (err) {
+        zoneChargement.textContent = 'Erreur lors du chargement.';
+    }
+}
+
+document.getElementById('form-recherche').addEventListener('submit', (e) => {
+    e.preventDefault();
+    pageCourante = 1;
+    chargerPlaintes();
+});
+
+document.getElementById('btn-reinitialiser').addEventListener('click', () => {
+    document.getElementById('form-recherche').reset();
+    pageCourante = 1;
+    chargerPlaintes();
+});
+
+// --- Cascade territoriale pour le formulaire de création ---
+async function chargerDepartementsPourFormulairePlainte() {
+    const res = await apiFetch('/territoire/departements');
+    if (!res || !res.ok) return;
+    const data = await res.json();
+    document.getElementById('p-departement').innerHTML = '<option value="">Sélectionner...</option>' +
+        data.departements.map((d) => `<option value="${d.id}">${d.nom}</option>`).join('');
+}
+
+document.getElementById('p-departement').addEventListener('change', async (e) => {
+    const villeSelect = document.getElementById('p-ville');
+    const departementId = e.target.value;
+    document.getElementById('p-arrondissement').innerHTML = '<option value="">Sélectionner une ville d\'abord</option>';
+    document.getElementById('p-quartier').innerHTML = '<option value="">Sélectionner un arrondissement d\'abord</option>';
+    if (!departementId) {
+        villeSelect.innerHTML = '<option value="">Sélectionner un département d\'abord</option>';
+        return;
+    }
+    const res = await apiFetch(`/territoire/departements/${departementId}/villes`);
+    if (!res || !res.ok) return;
+    const data = await res.json();
+    villeSelect.innerHTML = '<option value="">Sélectionner...</option>' +
+        data.villes.map((v) => `<option value="${v.id}">${v.nom}</option>`).join('');
+});
+
+document.getElementById('p-ville').addEventListener('change', async (e) => {
+    const arrSelect = document.getElementById('p-arrondissement');
+    const villeId = e.target.value;
+    document.getElementById('p-quartier').innerHTML = '<option value="">Sélectionner un arrondissement d\'abord</option>';
+    if (!villeId) {
+        arrSelect.innerHTML = '<option value="">Sélectionner une ville d\'abord</option>';
+        return;
+    }
+    const res = await apiFetch(`/territoire/villes/${villeId}/arrondissements`);
+    if (!res || !res.ok) return;
+    const data = await res.json();
+    arrSelect.innerHTML = '<option value="">Aucun / non précisé</option>' +
+        data.arrondissements.map((a) => `<option value="${a.id}">${a.nom}</option>`).join('');
+});
+
+document.getElementById('p-arrondissement').addEventListener('change', async (e) => {
+    const quartierSelect = document.getElementById('p-quartier');
+    const arrondissementId = e.target.value;
+    if (!arrondissementId) {
+        quartierSelect.innerHTML = '<option value="">Sélectionner un arrondissement d\'abord</option>';
+        return;
+    }
+    const res = await apiFetch(`/territoire/arrondissements/${arrondissementId}/quartiers`);
+    if (!res || !res.ok) return;
+    const data = await res.json();
+    quartierSelect.innerHTML = '<option value="">Aucun / non précisé</option>' +
+        data.quartiers.map((q) => `<option value="${q.id}">${q.nom}</option>`).join('');
+});
+
+// --- Modale de création ---
+document.getElementById('btn-nouvelle-plainte').addEventListener('click', () => {
+    document.getElementById('modal-plainte').classList.add('visible');
+});
+document.getElementById('fermer-modal-plainte').addEventListener('click', fermerModalPlainte);
+document.getElementById('annuler-plainte').addEventListener('click', fermerModalPlainte);
+
+function fermerModalPlainte() {
+    document.getElementById('modal-plainte').classList.remove('visible');
+    document.getElementById('form-plainte').reset();
+    masquerErreur('erreur-plainte');
+}
+
+document.getElementById('form-plainte').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    masquerErreur('erreur-plainte');
+
+    const payload = {
+        nature_infraction: document.getElementById('p-nature').value.trim(),
+        description: document.getElementById('p-description').value.trim(),
+        date_infraction: document.getElementById('p-date-infraction').value || null,
+        departement_id: parseInt(document.getElementById('p-departement').value, 10),
+        ville_id: parseInt(document.getElementById('p-ville').value, 10),
+        arrondissement_id: document.getElementById('p-arrondissement').value ? parseInt(document.getElementById('p-arrondissement').value, 10) : null,
+        quartier_id: document.getElementById('p-quartier').value ? parseInt(document.getElementById('p-quartier').value, 10) : null,
+        lieu_precis: document.getElementById('p-lieu-precis').value.trim() || null,
+    };
+
+    const btn = document.getElementById('btn-creer-plainte');
+    btn.disabled = true;
+
+    try {
+        const res = await apiFetch('/plaintes', { method: 'POST', body: JSON.stringify(payload) });
+        if (!res) return;
+        const data = await res.json();
+
+        if (!res.ok) {
+            afficherErreur('erreur-plainte', data.message || 'Erreur lors de la création.');
+            return;
+        }
+
+        fermerModalPlainte();
+        // Redirection directe vers la fiche détaillée pour ajouter victimes/témoins/suspects
+        window.location.href = `/plainte-detail.html?id=${data.id}`;
+    } catch (err) {
+        afficherErreur('erreur-plainte', 'Impossible de contacter le serveur.');
+    } finally {
+        btn.disabled = false;
+    }
+});
+
+chargerDepartementsPourFormulairePlainte();
+chargerPlaintes();
+</script>
+
+</body>
+</html>

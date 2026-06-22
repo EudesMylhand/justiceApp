@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Utilisateurs — Plateforme Justice &amp; Sécurité</title>
+<link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+
+<script src="/js/api.js"></script>
+<script src="/js/layout.js"></script>
+<script>injecterLayout('utilisateurs', 'Gestion des utilisateurs');</script>
+
+<script>
+definirContenuPage(`
+    <div class="panneau">
+        <div class="panneau-entete">
+            <h3>Liste des utilisateurs</h3>
+            <button class="bouton-petit primaire" id="btn-nouvel-utilisateur">+ Nouvel utilisateur</button>
+        </div>
+        <div id="zone-chargement-users" class="chargement">Chargement...</div>
+        <table id="tableau-users" style="display:none;">
+            <thead>
+                <tr>
+                    <th>Matricule</th><th>Nom</th><th>Rôle</th><th>Affectation</th>
+                    <th>Statut</th><th>Dernière connexion</th><th>Actions</th>
+                </tr>
+            </thead>
+            <tbody id="corps-tableau-users"></tbody>
+        </table>
+    </div>
+
+    <!-- Modale création utilisateur -->
+    <div class="overlay-modal" id="modal-utilisateur">
+        <div class="contenu-modal">
+            <div class="entete-modal">
+                <h3>Nouvel utilisateur</h3>
+                <button class="fermer-modal" id="fermer-modal-utilisateur">&times;</button>
+            </div>
+            <form id="form-utilisateur">
+                <div class="corps-modal">
+                    <div id="erreur-utilisateur" class="message-erreur"></div>
+                    <div id="succes-utilisateur" class="message-succes"></div>
+
+                    <div class="grille-deux-colonnes">
+                        <div class="champ">
+                            <label for="u-nom">Nom</label>
+                            <input type="text" id="u-nom" required>
+                        </div>
+                        <div class="champ">
+                            <label for="u-prenom">Prénom</label>
+                            <input type="text" id="u-prenom" required>
+                        </div>
+                    </div>
+                    <div class="champ">
+                        <label for="u-email">Email</label>
+                        <input type="email" id="u-email" required>
+                    </div>
+                    <div class="champ">
+                        <label for="u-telephone">Téléphone</label>
+                        <input type="text" id="u-telephone">
+                    </div>
+                    <div class="champ">
+                        <label for="u-role">Rôle</label>
+                        <select id="u-role" required>
+                            <option value="">Sélectionner un rôle...</option>
+                        </select>
+                    </div>
+                    <div class="champ">
+                        <label for="u-grade">Grade</label>
+                        <input type="text" id="u-grade">
+                    </div>
+                </div>
+                <div class="pied-modal">
+                    <button type="button" class="bouton-petit" id="annuler-utilisateur">Annuler</button>
+                    <button type="submit" class="bouton-petit primaire" id="btn-creer-utilisateur">Créer</button>
+                </div>
+            </form>
+        </div>
+    </div>
+`);
+
+let rolesDisponibles = [];
+
+async function chargerRoles() {
+    const res = await apiFetch('/users/roles');
+    if (!res || !res.ok) return;
+    const data = await res.json();
+    rolesDisponibles = data.roles;
+    const select = document.getElementById('u-role');
+    select.innerHTML = '<option value="">Sélectionner un rôle...</option>' +
+        rolesDisponibles.map((r) => `<option value="${r.id}">${r.nom}${r.service_nom ? ' — ' + r.service_nom : ''}</option>`).join('');
+}
+
+function badgeStatut(statut) {
+    return statut === 'ACTIF'
+        ? '<span class="statut-pill statut-actif">Actif</span>'
+        : '<span class="statut-pill statut-inactif">Inactif</span>';
+}
+
+async function chargerUtilisateurs() {
+    const zoneChargement = document.getElementById('zone-chargement-users');
+    const tableau = document.getElementById('tableau-users');
+    try {
+        const res = await apiFetch('/users?limit=100');
+        if (!res) return;
+        if (!res.ok) {
+            zoneChargement.textContent = "Vous n'avez pas les droits pour consulter cette liste.";
+            return;
+        }
+        const data = await res.json();
+        zoneChargement.style.display = 'none';
+        tableau.style.display = 'table';
+
+        const corps = document.getElementById('corps-tableau-users');
+        if (data.users.length === 0) {
+            corps.innerHTML = `<tr><td colspan="7"><div class="info-vide">Aucun utilisateur enregistré.</div></td></tr>`;
+            return;
+        }
+
+        corps.innerHTML = data.users.map((u) => `
+            <tr>
+                <td>${u.matricule}</td>
+                <td>${u.prenom} ${u.nom}</td>
+                <td>${u.role_nom}</td>
+                <td>${u.commissariat_nom || u.brigade_nom || '—'}</td>
+                <td>${badgeStatut(u.statut)}</td>
+                <td>${u.last_login_at ? new Date(u.last_login_at).toLocaleString('fr-FR') : 'Jamais'}</td>
+                <td>
+                    ${u.statut === 'ACTIF'
+                        ? `<button class="bouton-petit danger" onclick="changerStatutUtilisateur(${u.id}, 'deactivate')">Désactiver</button>`
+                        : `<button class="bouton-petit" onclick="changerStatutUtilisateur(${u.id}, 'reactivate')">Réactiver</button>`}
+                </td>
+            </tr>
+        `).join('');
+    } catch (err) {
+        zoneChargement.textContent = 'Erreur lors du chargement.';
+    }
+}
+
+async function changerStatutUtilisateur(id, action) {
+    const res = await apiFetch(`/users/${id}/${action}`, { method: 'POST' });
+    if (!res) return;
+    if (res.ok) chargerUtilisateurs();
+}
+
+document.getElementById('btn-nouvel-utilisateur').addEventListener('click', () => {
+    document.getElementById('modal-utilisateur').classList.add('visible');
+});
+document.getElementById('fermer-modal-utilisateur').addEventListener('click', fermerModalUtilisateur);
+document.getElementById('annuler-utilisateur').addEventListener('click', fermerModalUtilisateur);
+
+function fermerModalUtilisateur() {
+    document.getElementById('modal-utilisateur').classList.remove('visible');
+    document.getElementById('form-utilisateur').reset();
+    masquerErreur('erreur-utilisateur');
+}
+
+document.getElementById('form-utilisateur').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    masquerErreur('erreur-utilisateur');
+
+    const payload = {
+        nom: document.getElementById('u-nom').value.trim(),
+        prenom: document.getElementById('u-prenom').value.trim(),
+        email: document.getElementById('u-email').value.trim(),
+        telephone: document.getElementById('u-telephone').value.trim() || null,
+        role_id: parseInt(document.getElementById('u-role').value, 10),
+        grade: document.getElementById('u-grade').value.trim() || null,
+    };
+
+    const btn = document.getElementById('btn-creer-utilisateur');
+    btn.disabled = true;
+
+    try {
+        const res = await apiFetch('/users', { method: 'POST', body: JSON.stringify(payload) });
+        if (!res) return;
+        const data = await res.json();
+
+        if (!res.ok) {
+            afficherErreur('erreur-utilisateur', data.message || 'Erreur lors de la création.');
+            return;
+        }
+
+        afficherSucces('succes-utilisateur', `Utilisateur créé. Matricule : ${data.matricule} — Mot de passe temporaire : ${data.temporaryPassword}`);
+        chargerUtilisateurs();
+    } catch (err) {
+        afficherErreur('erreur-utilisateur', 'Impossible de contacter le serveur.');
+    } finally {
+        btn.disabled = false;
+    }
+});
+
+chargerRoles();
+chargerUtilisateurs();
+</script>
+
+</body>
+</html>

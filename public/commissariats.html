@@ -1,0 +1,307 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Commissariats — Plateforme Justice &amp; Sécurité</title>
+<link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+
+<script src="/js/api.js"></script>
+<script src="/js/layout.js"></script>
+<script>injecterLayout('commissariats', 'Commissariats de police');</script>
+
+<script>
+definirContenuPage(`
+    <div class="panneau">
+        <div class="panneau-entete">
+            <h3>Liste des commissariats</h3>
+            <button class="bouton-petit primaire" id="btn-nouveau-commissariat">+ Nouveau commissariat</button>
+        </div>
+        <div id="zone-chargement-com" class="chargement">Chargement...</div>
+        <table id="tableau-com" style="display:none;">
+            <thead>
+                <tr>
+                    <th>Code</th><th>Nom</th><th>Type</th><th>Localisation</th>
+                    <th>Effectif</th><th>Statut</th><th>Actions</th>
+                </tr>
+            </thead>
+            <tbody id="corps-tableau-com"></tbody>
+        </table>
+    </div>
+
+    <div class="overlay-modal" id="modal-commissariat">
+        <div class="contenu-modal">
+            <div class="entete-modal">
+                <h3>Nouveau commissariat</h3>
+                <button class="fermer-modal" id="fermer-modal-com">&times;</button>
+            </div>
+            <form id="form-commissariat">
+                <div class="corps-modal">
+                    <div id="erreur-com" class="message-erreur"></div>
+
+                    <div class="grille-deux-colonnes">
+                        <div class="champ">
+                            <label for="c-nom">Nom</label>
+                            <input type="text" id="c-nom" required>
+                        </div>
+                        <div class="champ">
+                            <label for="c-code">Code unique</label>
+                            <input type="text" id="c-code" required>
+                        </div>
+                    </div>
+
+                    <div class="champ">
+                        <label for="c-type">Type</label>
+                        <select id="c-type">
+                            <option value="CENTRAL">Central</option>
+                            <option value="ARRONDISSEMENT" selected>Arrondissement</option>
+                            <option value="SPECIALISE">Spécialisé</option>
+                        </select>
+                    </div>
+
+                    <div class="grille-deux-colonnes">
+                        <div class="champ">
+                            <label for="c-departement">Département</label>
+                            <select id="c-departement" required>
+                                <option value="">Sélectionner...</option>
+                            </select>
+                        </div>
+                        <div class="champ">
+                            <label for="c-ville">Ville</label>
+                            <select id="c-ville" required>
+                                <option value="">Sélectionner un département d'abord</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="grille-deux-colonnes">
+                        <div class="champ">
+                            <label for="c-arrondissement">Arrondissement</label>
+                            <select id="c-arrondissement">
+                                <option value="">Sélectionner une ville d'abord</option>
+                            </select>
+                        </div>
+                        <div class="champ">
+                            <label for="c-quartier">Quartier</label>
+                            <select id="c-quartier">
+                                <option value="">Sélectionner un arrondissement d'abord</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="champ">
+                        <label for="c-adresse">Adresse complète</label>
+                        <input type="text" id="c-adresse">
+                    </div>
+
+                    <div class="grille-deux-colonnes">
+                        <div class="champ">
+                            <label for="c-telephone">Téléphone</label>
+                            <input type="text" id="c-telephone">
+                        </div>
+                        <div class="champ">
+                            <label for="c-email">Email officiel</label>
+                            <input type="email" id="c-email">
+                        </div>
+                    </div>
+
+                    <div class="grille-deux-colonnes">
+                        <div class="champ">
+                            <label for="c-opj">Nombre d'OPJ</label>
+                            <input type="number" id="c-opj" min="0" value="0">
+                        </div>
+                        <div class="champ">
+                            <label for="c-apj">Nombre d'APJ</label>
+                            <input type="number" id="c-apj" min="0" value="0">
+                        </div>
+                    </div>
+                    <div class="champ">
+                        <label for="c-agents">Nombre total d'agents</label>
+                        <input type="number" id="c-agents" min="0" value="0">
+                    </div>
+                </div>
+                <div class="pied-modal">
+                    <button type="button" class="bouton-petit" id="annuler-com">Annuler</button>
+                    <button type="submit" class="bouton-petit primaire" id="btn-creer-com">Créer</button>
+                </div>
+            </form>
+        </div>
+    </div>
+`);
+
+async function chargerDepartementsPourFormulaire() {
+    const res = await apiFetch('/territoire/departements');
+    if (!res || !res.ok) return;
+    const data = await res.json();
+    const select = document.getElementById('c-departement');
+    select.innerHTML = '<option value="">Sélectionner...</option>' +
+        data.departements.map((d) => `<option value="${d.id}">${d.nom}</option>`).join('');
+}
+
+document.getElementById('c-departement').addEventListener('change', async (e) => {
+    const villeSelect = document.getElementById('c-ville');
+    const arrSelect = document.getElementById('c-arrondissement');
+    const quartierSelect = document.getElementById('c-quartier');
+    const departementId = e.target.value;
+
+    arrSelect.innerHTML = '<option value="">Sélectionner une ville d\'abord</option>';
+    quartierSelect.innerHTML = '<option value="">Sélectionner un arrondissement d\'abord</option>';
+
+    if (!departementId) {
+        villeSelect.innerHTML = '<option value="">Sélectionner un département d\'abord</option>';
+        return;
+    }
+    const res = await apiFetch(`/territoire/departements/${departementId}/villes`);
+    if (!res || !res.ok) return;
+    const data = await res.json();
+    villeSelect.innerHTML = '<option value="">Sélectionner...</option>' +
+        data.villes.map((v) => `<option value="${v.id}">${v.nom}</option>`).join('');
+});
+
+document.getElementById('c-ville').addEventListener('change', async (e) => {
+    const arrSelect = document.getElementById('c-arrondissement');
+    const quartierSelect = document.getElementById('c-quartier');
+    const villeId = e.target.value;
+
+    quartierSelect.innerHTML = '<option value="">Sélectionner un arrondissement d\'abord</option>';
+
+    if (!villeId) {
+        arrSelect.innerHTML = '<option value="">Sélectionner une ville d\'abord</option>';
+        return;
+    }
+    const res = await apiFetch(`/territoire/villes/${villeId}/arrondissements`);
+    if (!res || !res.ok) return;
+    const data = await res.json();
+    arrSelect.innerHTML = '<option value="">Aucun / non précisé</option>' +
+        data.arrondissements.map((a) => `<option value="${a.id}">${a.nom}</option>`).join('');
+});
+
+document.getElementById('c-arrondissement').addEventListener('change', async (e) => {
+    const quartierSelect = document.getElementById('c-quartier');
+    const arrondissementId = e.target.value;
+
+    if (!arrondissementId) {
+        quartierSelect.innerHTML = '<option value="">Sélectionner un arrondissement d\'abord</option>';
+        return;
+    }
+    const res = await apiFetch(`/territoire/arrondissements/${arrondissementId}/quartiers`);
+    if (!res || !res.ok) return;
+    const data = await res.json();
+    quartierSelect.innerHTML = '<option value="">Aucun / non précisé</option>' +
+        data.quartiers.map((q) => `<option value="${q.id}">${q.nom}</option>`).join('');
+});
+
+function badgeStatut(statut) {
+    return statut === 'ACTIF'
+        ? '<span class="statut-pill statut-actif">Actif</span>'
+        : '<span class="statut-pill statut-inactif">Inactif</span>';
+}
+
+async function chargerCommissariats() {
+    const zoneChargement = document.getElementById('zone-chargement-com');
+    const tableau = document.getElementById('tableau-com');
+    try {
+        const res = await apiFetch('/commissariats');
+        if (!res) return;
+        if (!res.ok) {
+            zoneChargement.textContent = "Vous n'avez pas les droits pour consulter cette liste.";
+            return;
+        }
+        const data = await res.json();
+        zoneChargement.style.display = 'none';
+        tableau.style.display = 'table';
+
+        const corps = document.getElementById('corps-tableau-com');
+        if (data.commissariats.length === 0) {
+            corps.innerHTML = `<tr><td colspan="7"><div class="info-vide">Aucun commissariat enregistré.</div></td></tr>`;
+            return;
+        }
+
+        corps.innerHTML = data.commissariats.map((c) => `
+            <tr>
+                <td>${c.code}</td>
+                <td>${c.nom}</td>
+                <td>${c.type}</td>
+                <td>${c.ville_nom}, ${c.departement_nom}</td>
+                <td>${c.nombre_agents_total}</td>
+                <td>${badgeStatut(c.statut)}</td>
+                <td>
+                    ${c.statut === 'ACTIF'
+                        ? `<button class="bouton-petit danger" onclick="changerStatutCommissariat(${c.id}, 'deactivate')">Désactiver</button>`
+                        : `<button class="bouton-petit" onclick="changerStatutCommissariat(${c.id}, 'reactivate')">Réactiver</button>`}
+                </td>
+            </tr>
+        `).join('');
+    } catch (err) {
+        zoneChargement.textContent = 'Erreur lors du chargement.';
+    }
+}
+
+async function changerStatutCommissariat(id, action) {
+    const res = await apiFetch(`/commissariats/${id}/${action}`, { method: 'POST' });
+    if (!res) return;
+    if (res.ok) chargerCommissariats();
+}
+
+document.getElementById('btn-nouveau-commissariat').addEventListener('click', () => {
+    document.getElementById('modal-commissariat').classList.add('visible');
+});
+document.getElementById('fermer-modal-com').addEventListener('click', fermerModalCommissariat);
+document.getElementById('annuler-com').addEventListener('click', fermerModalCommissariat);
+
+function fermerModalCommissariat() {
+    document.getElementById('modal-commissariat').classList.remove('visible');
+    document.getElementById('form-commissariat').reset();
+    masquerErreur('erreur-com');
+}
+
+document.getElementById('form-commissariat').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    masquerErreur('erreur-com');
+
+    const payload = {
+        nom: document.getElementById('c-nom').value.trim(),
+        code: document.getElementById('c-code').value.trim(),
+        type: document.getElementById('c-type').value,
+        departement_id: parseInt(document.getElementById('c-departement').value, 10),
+        ville_id: parseInt(document.getElementById('c-ville').value, 10),
+        arrondissement_id: document.getElementById('c-arrondissement').value ? parseInt(document.getElementById('c-arrondissement').value, 10) : null,
+        quartier_id: document.getElementById('c-quartier').value ? parseInt(document.getElementById('c-quartier').value, 10) : null,
+        adresse_complete: document.getElementById('c-adresse').value.trim() || null,
+        telephone: document.getElementById('c-telephone').value.trim() || null,
+        email_officiel: document.getElementById('c-email').value.trim() || null,
+        nombre_opj: parseInt(document.getElementById('c-opj').value, 10) || 0,
+        nombre_apj: parseInt(document.getElementById('c-apj').value, 10) || 0,
+        nombre_agents_total: parseInt(document.getElementById('c-agents').value, 10) || 0,
+    };
+
+    const btn = document.getElementById('btn-creer-com');
+    btn.disabled = true;
+
+    try {
+        const res = await apiFetch('/commissariats', { method: 'POST', body: JSON.stringify(payload) });
+        if (!res) return;
+        const data = await res.json();
+
+        if (!res.ok) {
+            afficherErreur('erreur-com', data.message || 'Erreur lors de la création.');
+            return;
+        }
+
+        fermerModalCommissariat();
+        chargerCommissariats();
+    } catch (err) {
+        afficherErreur('erreur-com', 'Impossible de contacter le serveur.');
+    } finally {
+        btn.disabled = false;
+    }
+});
+
+chargerDepartementsPourFormulaire();
+chargerCommissariats();
+</script>
+
+</body>
+</html>

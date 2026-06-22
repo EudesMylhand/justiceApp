@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Journaux & Audit — Plateforme Justice &amp; Sécurité</title>
+<link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+
+<script src="/js/api.js"></script>
+<script src="/js/layout.js"></script>
+<script>injecterLayout('journaux', "Journaux d'audit et de connexion");</script>
+
+<script>
+definirContenuPage(`
+    <div class="panneau">
+        <div class="panneau-entete"><h3>Connexions récentes</h3></div>
+        <div id="zone-chargement-conn" class="chargement">Chargement...</div>
+        <table id="tableau-conn" style="display:none;">
+            <thead>
+                <tr><th>Date</th><th>Utilisateur</th><th>Identifiant saisi</th><th>Statut</th><th>Adresse IP</th></tr>
+            </thead>
+            <tbody id="corps-tableau-conn"></tbody>
+        </table>
+    </div>
+
+    <div class="panneau">
+        <div class="panneau-entete"><h3>Actions journalisées (audit)</h3></div>
+        <div id="zone-chargement-audit" class="chargement">Chargement...</div>
+        <table id="tableau-audit" style="display:none;">
+            <thead>
+                <tr><th>Date</th><th>Utilisateur</th><th>Action</th><th>Module</th><th>Entité</th></tr>
+            </thead>
+            <tbody id="corps-tableau-audit"></tbody>
+        </table>
+    </div>
+`);
+
+function badgeStatutConnexion(statut) {
+    const libelles = {
+        SUCCES: ['Succès', 'statut-actif'],
+        ECHEC_MOT_DE_PASSE: ['Échec mot de passe', 'statut-inactif'],
+        ECHEC_2FA: ['Échec 2FA', 'statut-inactif'],
+        COMPTE_BLOQUE: ['Compte bloqué', 'statut-inactif'],
+        COMPTE_INACTIF: ['Compte inactif', 'statut-inactif'],
+    };
+    const [label, classe] = libelles[statut] || [statut, 'statut-inactif'];
+    return `<span class="statut-pill ${classe}">${label}</span>`;
+}
+
+async function chargerJournaux() {
+    const zoneConn = document.getElementById('zone-chargement-conn');
+    const zoneAudit = document.getElementById('zone-chargement-audit');
+    try {
+        const res = await apiFetch('/dashboard/journaux?limit=100');
+        if (!res) return;
+        if (!res.ok) {
+            zoneConn.textContent = "Vous n'avez pas les droits pour consulter les journaux.";
+            zoneAudit.style.display = 'none';
+            return;
+        }
+        const data = await res.json();
+
+        // Connexions
+        zoneConn.style.display = 'none';
+        document.getElementById('tableau-conn').style.display = 'table';
+        const corpsConn = document.getElementById('corps-tableau-conn');
+        if (data.connexions.length === 0) {
+            corpsConn.innerHTML = `<tr><td colspan="5"><div class="info-vide">Aucune connexion enregistrée.</div></td></tr>`;
+        } else {
+            corpsConn.innerHTML = data.connexions.map((c) => `
+                <tr>
+                    <td>${new Date(c.created_at).toLocaleString('fr-FR')}</td>
+                    <td>${c.user_nom || '—'}</td>
+                    <td>${c.matricule_ou_email_saisi || '—'}</td>
+                    <td>${badgeStatutConnexion(c.statut)}</td>
+                    <td>${c.adresse_ip || '—'}</td>
+                </tr>
+            `).join('');
+        }
+
+        // Audit
+        zoneAudit.style.display = 'none';
+        document.getElementById('tableau-audit').style.display = 'table';
+        const corpsAudit = document.getElementById('corps-tableau-audit');
+        if (data.actions.length === 0) {
+            corpsAudit.innerHTML = `<tr><td colspan="5"><div class="info-vide">Aucune action enregistrée.</div></td></tr>`;
+        } else {
+            corpsAudit.innerHTML = data.actions.map((a) => `
+                <tr>
+                    <td>${new Date(a.created_at).toLocaleString('fr-FR')}</td>
+                    <td>${a.user_nom || '—'}</td>
+                    <td>${a.action}</td>
+                    <td>${a.module}</td>
+                    <td>${a.entite_type || '—'} ${a.entite_id ? '#' + a.entite_id : ''}</td>
+                </tr>
+            `).join('');
+        }
+    } catch (err) {
+        zoneConn.textContent = 'Erreur lors du chargement.';
+        zoneAudit.style.display = 'none';
+    }
+}
+
+chargerJournaux();
+</script>
+
+</body>
+</html>

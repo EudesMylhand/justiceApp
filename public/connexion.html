@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Connexion — Plateforme Justice &amp; Sécurité</title>
+<link rel="stylesheet" href="/css/style.css">
+</head>
+<body class="ecran-connexion">
+
+<div class="bandeau-officiel">
+    <span class="republique">République du Congo</span>
+    <span class="devise">Unité — Travail — Progrès</span>
+</div>
+
+<div class="contenu-connexion">
+    <div class="carte-connexion">
+
+        <!-- Écran 1 : identifiant + mot de passe -->
+        <div id="ecran-login">
+            <div class="entete-connexion">
+                <div class="emblem">RC</div>
+                <h1>Plateforme Justice &amp; Sécurité</h1>
+                <p>Police · Gendarmerie · Justice · Administration Pénitentiaire</p>
+            </div>
+            <div class="corps-connexion">
+                <div id="erreur-login" class="message-erreur"></div>
+
+                <form id="form-login">
+                    <div class="champ">
+                        <label for="identifier">Matricule ou email</label>
+                        <input type="text" id="identifier" name="identifier" autocomplete="username" required>
+                    </div>
+                    <div class="champ">
+                        <label for="password">Mot de passe</label>
+                        <input type="password" id="password" name="password" autocomplete="current-password" required>
+                    </div>
+                    <button type="submit" class="bouton-principal" id="btn-login">Se connecter</button>
+                </form>
+
+                <div class="lien-pied">
+                    <a href="#" id="lien-mot-de-passe-oublie">Mot de passe oublié ?</a>
+                </div>
+            </div>
+        </div>
+
+        <!-- Écran 2 : code 2FA -->
+        <div id="ecran-2fa" style="display:none;">
+            <div class="entete-connexion">
+                <div class="emblem">2FA</div>
+                <h1>Vérification en deux étapes</h1>
+                <p>Saisissez le code généré par votre application d'authentification</p>
+            </div>
+            <div class="corps-connexion">
+                <div id="erreur-2fa" class="message-erreur"></div>
+                <form id="form-2fa">
+                    <div class="champ">
+                        <label for="code-2fa">Code à 6 chiffres</label>
+                        <input type="text" id="code-2fa" name="code" inputmode="numeric" maxlength="6" autocomplete="one-time-code" required>
+                    </div>
+                    <button type="submit" class="bouton-principal" id="btn-2fa">Vérifier</button>
+                    <button type="button" class="bouton-secondaire" id="btn-annuler-2fa">Annuler</button>
+                </form>
+            </div>
+        </div>
+
+        <!-- Écran 3 : mot de passe oublié -->
+        <div id="ecran-mot-de-passe-oublie" style="display:none;">
+            <div class="entete-connexion">
+                <div class="emblem">RC</div>
+                <h1>Réinitialisation du mot de passe</h1>
+                <p>Indiquez votre adresse email professionnelle</p>
+            </div>
+            <div class="corps-connexion">
+                <div id="erreur-reset" class="message-erreur"></div>
+                <div id="succes-reset" class="message-succes"></div>
+                <form id="form-reset">
+                    <div class="champ">
+                        <label for="email-reset">Email</label>
+                        <input type="email" id="email-reset" name="email" autocomplete="email" required>
+                    </div>
+                    <button type="submit" class="bouton-principal" id="btn-reset">Envoyer le lien de réinitialisation</button>
+                    <button type="button" class="bouton-secondaire" id="btn-retour-login">Retour à la connexion</button>
+                </form>
+            </div>
+        </div>
+
+    </div>
+</div>
+
+<div class="pied-connexion">
+    Plateforme Nationale de Justice &amp; Sécurité — Accès réservé aux personnels habilités. Toute tentative d'accès non autorisée est journalisée.
+</div>
+
+<script src="/js/api.js"></script>
+<script>
+    // Si déjà connecté, on redirige directement vers le tableau de bord
+    if (Auth.isLoggedIn()) {
+        window.location.href = '/dashboard.html';
+    }
+
+    let challengeTokenCourant = null;
+
+    const ecranLogin = document.getElementById('ecran-login');
+    const ecran2fa = document.getElementById('ecran-2fa');
+    const ecranReset = document.getElementById('ecran-mot-de-passe-oublie');
+
+    function afficherEcran(ecran) {
+        [ecranLogin, ecran2fa, ecranReset].forEach((e) => e.style.display = 'none');
+        ecran.style.display = 'block';
+    }
+
+    // --- Étape 1 : login ---
+    document.getElementById('form-login').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        masquerErreur('erreur-login');
+
+        const identifier = document.getElementById('identifier').value.trim();
+        const password = document.getElementById('password').value;
+        const btn = document.getElementById('btn-login');
+        btn.disabled = true;
+        btn.textContent = 'Connexion en cours...';
+
+        try {
+            const response = await fetch('/api/auth/login', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ identifier, password }),
+            });
+            const data = await response.json();
+
+            if (!response.ok) {
+                afficherErreur('erreur-login', data.message || 'Identifiants incorrects.');
+                return;
+            }
+
+            if (data.requiresTwoFactor) {
+                challengeTokenCourant = data.challengeToken;
+                afficherEcran(ecran2fa);
+                return;
+            }
+
+            finaliserConnexion(data);
+        } catch (err) {
+            afficherErreur('erreur-login', 'Impossible de contacter le serveur. Veuillez réessayer.');
+        } finally {
+            btn.disabled = false;
+            btn.textContent = 'Se connecter';
+        }
+    });
+
+    // --- Étape 2 : vérification 2FA ---
+    document.getElementById('form-2fa').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        masquerErreur('erreur-2fa');
+
+        const code = document.getElementById('code-2fa').value.trim();
+        const btn = document.getElementById('btn-2fa');
+        btn.disabled = true;
+        btn.textContent = 'Vérification...';
+
+        try {
+            const response = await fetch('/api/auth/login/verify-2fa', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ challengeToken: challengeTokenCourant, code }),
+            });
+            const data = await response.json();
+
+            if (!response.ok) {
+                afficherErreur('erreur-2fa', data.message || 'Code invalide.');
+                return;
+            }
+
+            finaliserConnexion(data);
+        } catch (err) {
+            afficherErreur('erreur-2fa', 'Impossible de contacter le serveur. Veuillez réessayer.');
+        } finally {
+            btn.disabled = false;
+            btn.textContent = 'Vérifier';
+        }
+    });
+
+    document.getElementById('btn-annuler-2fa').addEventListener('click', () => {
+        challengeTokenCourant = null;
+        afficherEcran(ecranLogin);
+    });
+
+    function finaliserConnexion(data) {
+        Auth.setSession({
+            accessToken: data.accessToken,
+            sessionId: data.sessionId,
+            user: data.user,
+        });
+
+        if (data.mustChangePassword) {
+            window.location.href = '/changer-mot-de-passe.html';
+        } else {
+            window.location.href = '/dashboard.html';
+        }
+    }
+
+    // --- Mot de passe oublié ---
+    document.getElementById('lien-mot-de-passe-oublie').addEventListener('click', (e) => {
+        e.preventDefault();
+        afficherEcran(ecranReset);
+    });
+
+    document.getElementById('btn-retour-login').addEventListener('click', () => {
+        afficherEcran(ecranLogin);
+    });
+
+    document.getElementById('form-reset').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        masquerErreur('erreur-reset');
+        const email = document.getElementById('email-reset').value.trim();
+        const btn = document.getElementById('btn-reset');
+        btn.disabled = true;
+
+        try {
+            const response = await fetch('/api/auth/password/forgot', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ email }),
+            });
+            const data = await response.json();
+            if (!response.ok) {
+                afficherErreur('erreur-reset', data.message || 'Une erreur est survenue.');
+                return;
+            }
+            afficherSucces('succes-reset', data.message);
+        } catch (err) {
+            afficherErreur('erreur-reset', 'Impossible de contacter le serveur.');
+        } finally {
+            btn.disabled = false;
+        }
+    });
+</script>
+</body>
+</html>

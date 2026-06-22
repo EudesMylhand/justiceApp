@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Tableau de bord — Plateforme Justice &amp; Sécurité</title>
+<link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+
+<script src="/js/api.js"></script>
+<script src="/js/layout.js"></script>
+<script>injecterLayout('dashboard', 'Tableau de bord — Vue d\'ensemble nationale');</script>
+
+<script>
+definirContenuPage(`
+    <div id="zone-chargement" class="chargement">Chargement des indicateurs...</div>
+    <div id="zone-stats" class="grille-stats" style="display:none;"></div>
+
+    <div class="panneau" id="zone-rh" style="display:none;">
+        <div class="panneau-entete"><h3>Répartition des effectifs par service</h3></div>
+        <table>
+            <thead><tr><th>Service</th><th>Effectif actif</th></tr></thead>
+            <tbody id="corps-tableau-rh"></tbody>
+        </table>
+    </div>
+`);
+
+async function chargerDashboard() {
+    try {
+        const [resVueEnsemble, resRH] = await Promise.all([
+            apiFetch('/dashboard/vue-ensemble'),
+            apiFetch('/dashboard/statistiques-rh'),
+        ]);
+
+        if (!resVueEnsemble || !resRH) return;
+
+        document.getElementById('zone-chargement').style.display = 'none';
+
+        if (resVueEnsemble.ok) {
+            const data = await resVueEnsemble.json();
+            const stats = [
+                { label: 'Commissariats', valeur: data.nombreCommissariats },
+                { label: 'Brigades', valeur: data.nombreBrigades },
+                { label: 'Agents (Police + Gendarmerie)', valeur: data.nombreAgents },
+                { label: 'Magistrats', valeur: data.nombreMagistrats },
+                { label: 'Établissements pénitentiaires', valeur: data.nombreEtablissementsPenitentiaires },
+                { label: 'Plaintes enregistrées', valeur: data.nombrePlaintes },
+                { label: 'Procédures en cours', valeur: data.nombreProceduresEnCours },
+                { label: 'Détenus', valeur: data.nombreDetenus },
+            ];
+
+            const zoneStats = document.getElementById('zone-stats');
+            zoneStats.innerHTML = stats.map((s) => `
+                <div class="carte-stat">
+                    <div class="valeur-stat">${s.valeur}</div>
+                    <div class="label-stat">${s.label}</div>
+                </div>
+            `).join('');
+            zoneStats.style.display = 'grid';
+
+            if (data.note) {
+                zoneStats.insertAdjacentHTML('afterend', `<p style="color: var(--gris-texte); font-size: 13px; margin-bottom: 24px;">ℹ️ ${data.note}</p>`);
+            }
+        }
+
+        if (resRH.ok) {
+            const data = await resRH.json();
+            const corps = document.getElementById('corps-tableau-rh');
+            if (data.statistiquesParService.length === 0) {
+                corps.innerHTML = `<tr><td colspan="2"><div class="info-vide">Aucune donnée disponible.</div></td></tr>`;
+            } else {
+                corps.innerHTML = data.statistiquesParService.map((s) => `
+                    <tr><td>${s.service_nom}</td><td>${s.total}</td></tr>
+                `).join('');
+            }
+            document.getElementById('zone-rh').style.display = 'block';
+        }
+    } catch (err) {
+        document.getElementById('zone-chargement').textContent = 'Erreur lors du chargement des données.';
+    }
+}
+
+chargerDashboard();
+</script>
+
+</body>
+</html>

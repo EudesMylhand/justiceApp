@@ -1,0 +1,543 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Détail de la plainte — Plateforme Justice &amp; Sécurité</title>
+<link rel="stylesheet" href="/css/style.css">
+<style>
+    .onglets { display: flex; gap: 4px; border-bottom: 1px solid var(--gris-bordure); margin-bottom: 20px; }
+    .onglet { padding: 10px 18px; font-size: 14px; cursor: pointer; color: var(--gris-texte); border-bottom: 2px solid transparent; }
+    .onglet.actif { color: var(--bleu-fonce); border-bottom-color: var(--ocre); font-weight: 600; }
+    .vue-onglet { display: none; }
+    .vue-onglet.actif { display: block; }
+    .fiche-info { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 14px; padding: 18px 22px; }
+    .fiche-info .item-info .label { font-size: 12px; color: var(--gris-texte); text-transform: uppercase; letter-spacing: 0.04em; }
+    .fiche-info .item-info .valeur { font-size: 14px; margin-top: 3px; font-weight: 600; color: var(--bleu-nuit); }
+    .carte-personne { background: var(--gris-fond); border-radius: var(--radius-sm); padding: 14px 16px; margin-bottom: 10px; }
+    .carte-personne .nom-personne { font-weight: 600; color: var(--bleu-nuit); }
+    .entree-historique { padding: 10px 0; border-bottom: 1px solid var(--gris-bordure); font-size: 13px; }
+    .entree-historique:last-child { border-bottom: none; }
+    .entree-historique .meta { color: var(--gris-texte); font-size: 12px; margin-top: 2px; }
+</style>
+</head>
+<body>
+
+<script src="/js/api.js"></script>
+<script src="/js/layout.js"></script>
+<script>injecterLayout('plaintes', 'Détail de la plainte');</script>
+
+<script>
+definirContenuPage(`
+    <div class="panneau" id="panneau-fiche">
+        <div class="panneau-entete">
+            <h3 id="titre-numero-plainte">Chargement...</h3>
+            <div>
+                <select id="select-statut" style="margin-right:8px; padding:6px 10px; border-radius:4px; border:1px solid var(--gris-bordure);">
+                    <option value="ENREGISTREE">Enregistrée</option>
+                    <option value="EN_ENQUETE">En enquête</option>
+                    <option value="TRANSMISE_PARQUET">Transmise au parquet</option>
+                    <option value="CLASSEE_SANS_SUITE">Classée sans suite</option>
+                    <option value="CLOTUREE">Clôturée</option>
+                </select>
+                <button class="bouton-petit primaire" id="btn-changer-statut">Mettre à jour le statut</button>
+            </div>
+        </div>
+        <div id="fiche-info-conteneur" class="fiche-info"></div>
+        <div style="padding: 0 22px 18px;">
+            <strong style="font-size:13px; color:var(--gris-texte);">Description des faits</strong>
+            <p id="texte-description" style="margin-top:6px; font-size:14px;"></p>
+        </div>
+    </div>
+
+    <div class="onglets">
+        <div class="onglet actif" data-onglet="victimes">Victimes</div>
+        <div class="onglet" data-onglet="temoins">Témoins</div>
+        <div class="onglet" data-onglet="suspects">Suspects</div>
+        <div class="onglet" data-onglet="pieces">Pièces jointes</div>
+        <div class="onglet" data-onglet="historique">Historique</div>
+    </div>
+
+    <!-- VICTIMES -->
+    <div class="vue-onglet actif" id="vue-victimes">
+        <div class="panneau">
+            <div class="panneau-entete">
+                <h3>Victimes</h3>
+                <button class="bouton-petit primaire" id="btn-ajouter-victime">+ Ajouter une victime</button>
+            </div>
+            <div id="liste-victimes" style="padding: 14px 22px;"></div>
+        </div>
+    </div>
+
+    <!-- TEMOINS -->
+    <div class="vue-onglet" id="vue-temoins">
+        <div class="panneau">
+            <div class="panneau-entete">
+                <h3>Témoins</h3>
+                <button class="bouton-petit primaire" id="btn-ajouter-temoin">+ Ajouter un témoin</button>
+            </div>
+            <div id="liste-temoins" style="padding: 14px 22px;"></div>
+        </div>
+    </div>
+
+    <!-- SUSPECTS -->
+    <div class="vue-onglet" id="vue-suspects">
+        <div class="panneau">
+            <div class="panneau-entete">
+                <h3>Suspects</h3>
+                <button class="bouton-petit primaire" id="btn-ajouter-suspect">+ Ajouter un suspect</button>
+            </div>
+            <div id="liste-suspects" style="padding: 14px 22px;"></div>
+        </div>
+    </div>
+
+    <!-- PIECES JOINTES -->
+    <div class="vue-onglet" id="vue-pieces">
+        <div class="panneau">
+            <div class="panneau-entete">
+                <h3>Pièces jointes</h3>
+                <div>
+                    <input type="file" id="input-fichier" style="display:none;" accept=".jpg,.jpeg,.png,.webp,.gif,.pdf,.doc,.docx">
+                    <button class="bouton-petit primaire" id="btn-ajouter-piece">+ Ajouter un fichier</button>
+                </div>
+            </div>
+            <div id="erreur-piece" class="message-erreur" style="margin: 14px 22px;"></div>
+            <div id="liste-pieces" style="padding: 14px 22px;"></div>
+        </div>
+    </div>
+
+    <!-- HISTORIQUE -->
+    <div class="vue-onglet" id="vue-historique">
+        <div class="panneau">
+            <div class="panneau-entete"><h3>Historique des actions</h3></div>
+            <div id="liste-historique" style="padding: 14px 22px;"></div>
+        </div>
+    </div>
+
+    <!-- Modale Victime -->
+    <div class="overlay-modal" id="modal-victime">
+        <div class="contenu-modal">
+            <div class="entete-modal"><h3>Ajouter une victime</h3><button class="fermer-modal" data-fermer="modal-victime">&times;</button></div>
+            <form id="form-victime">
+                <div class="corps-modal">
+                    <div id="erreur-victime" class="message-erreur"></div>
+                    <div class="grille-deux-colonnes">
+                        <div class="champ"><label>Nom</label><input type="text" id="v-nom" required></div>
+                        <div class="champ"><label>Prénom</label><input type="text" id="v-prenom" required></div>
+                    </div>
+                    <div class="grille-deux-colonnes">
+                        <div class="champ"><label>Date de naissance</label><input type="date" id="v-date-naissance"></div>
+                        <div class="champ"><label>Sexe</label><select id="v-sexe"><option value="">Non précisé</option><option value="M">Masculin</option><option value="F">Féminin</option></select></div>
+                    </div>
+                    <div class="grille-deux-colonnes">
+                        <div class="champ"><label>Téléphone</label><input type="text" id="v-telephone"></div>
+                        <div class="champ"><label>Pièce d'identité</label><input type="text" id="v-piece" placeholder="ex: CNI n° ..."></div>
+                    </div>
+                    <div class="champ"><label>Adresse</label><input type="text" id="v-adresse"></div>
+                    <div class="champ"><label>Observations</label><input type="text" id="v-observations"></div>
+                </div>
+                <div class="pied-modal">
+                    <button type="button" class="bouton-petit" data-fermer="modal-victime">Annuler</button>
+                    <button type="submit" class="bouton-petit primaire">Ajouter</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Modale Témoin -->
+    <div class="overlay-modal" id="modal-temoin">
+        <div class="contenu-modal">
+            <div class="entete-modal"><h3>Ajouter un témoin</h3><button class="fermer-modal" data-fermer="modal-temoin">&times;</button></div>
+            <form id="form-temoin">
+                <div class="corps-modal">
+                    <div id="erreur-temoin" class="message-erreur"></div>
+                    <div class="grille-deux-colonnes">
+                        <div class="champ"><label>Nom</label><input type="text" id="t-nom" required></div>
+                        <div class="champ"><label>Prénom</label><input type="text" id="t-prenom" required></div>
+                    </div>
+                    <div class="champ"><label>Téléphone</label><input type="text" id="t-telephone"></div>
+                    <div class="champ"><label>Adresse</label><input type="text" id="t-adresse"></div>
+                    <div class="champ"><label>Résumé de la déclaration</label><input type="text" id="t-declaration"></div>
+                </div>
+                <div class="pied-modal">
+                    <button type="button" class="bouton-petit" data-fermer="modal-temoin">Annuler</button>
+                    <button type="submit" class="bouton-petit primaire">Ajouter</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Modale Suspect -->
+    <div class="overlay-modal" id="modal-suspect">
+        <div class="contenu-modal">
+            <div class="entete-modal"><h3>Ajouter un suspect</h3><button class="fermer-modal" data-fermer="modal-suspect">&times;</button></div>
+            <form id="form-suspect">
+                <div class="corps-modal">
+                    <div id="erreur-suspect" class="message-erreur"></div>
+                    <div class="grille-deux-colonnes">
+                        <div class="champ"><label>Nom</label><input type="text" id="s-nom"></div>
+                        <div class="champ"><label>Prénom</label><input type="text" id="s-prenom"></div>
+                    </div>
+                    <div class="champ"><label>Surnom (si identité inconnue)</label><input type="text" id="s-surnom"></div>
+                    <div class="champ"><label>Description physique</label><input type="text" id="s-description"></div>
+                    <div class="grille-deux-colonnes">
+                        <div class="champ"><label>Date de naissance</label><input type="date" id="s-date-naissance"></div>
+                        <div class="champ">
+                            <label>Statut</label>
+                            <select id="s-statut">
+                                <option value="RECHERCHE">Recherché</option>
+                                <option value="IDENTIFIE">Identifié</option>
+                                <option value="INTERPELLE">Interpellé</option>
+                                <option value="MIS_HORS_DE_CAUSE">Mis hors de cause</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="champ"><label>Adresse</label><input type="text" id="s-adresse"></div>
+                    <div class="champ"><label>Observations</label><input type="text" id="s-observations"></div>
+                </div>
+                <div class="pied-modal">
+                    <button type="button" class="bouton-petit" data-fermer="modal-suspect">Annuler</button>
+                    <button type="submit" class="bouton-petit primaire">Ajouter</button>
+                </div>
+            </form>
+        </div>
+    </div>
+`);
+
+const idPlainte = new URLSearchParams(window.location.search).get('id');
+if (!idPlainte) {
+    window.location.href = '/plaintes.html';
+}
+
+// --- Gestion des onglets ---
+document.querySelectorAll('.onglet').forEach((onglet) => {
+    onglet.addEventListener('click', () => {
+        document.querySelectorAll('.onglet').forEach((o) => o.classList.remove('actif'));
+        document.querySelectorAll('.vue-onglet').forEach((v) => v.classList.remove('actif'));
+        onglet.classList.add('actif');
+        document.getElementById('vue-' + onglet.dataset.onglet).classList.add('actif');
+    });
+});
+
+function badgeStatutPlainte(statut) {
+    const libelles = {
+        ENREGISTREE: ['Enregistrée', 'statut-actif'],
+        EN_ENQUETE: ['En enquête', 'statut-actif'],
+        TRANSMISE_PARQUET: ['Transmise au parquet', 'statut-actif'],
+        CLASSEE_SANS_SUITE: ['Classée sans suite', 'statut-inactif'],
+        CLOTUREE: ['Clôturée', 'statut-inactif'],
+    };
+    const [label, classe] = libelles[statut] || [statut, 'statut-inactif'];
+    return `<span class="statut-pill ${classe}">${label}</span>`;
+}
+
+function champInfo(label, valeur) {
+    return `<div class="item-info"><div class="label">${label}</div><div class="valeur">${valeur || '—'}</div></div>`;
+}
+
+async function chargerDetailPlainte() {
+    const res = await apiFetch(`/plaintes/${idPlainte}`);
+    if (!res) return;
+    if (!res.ok) {
+        document.getElementById('titre-numero-plainte').textContent = "Accès refusé ou plainte introuvable.";
+        return;
+    }
+    const data = await res.json();
+    const p = data.plainte;
+
+    document.getElementById('titre-numero-plainte').innerHTML =
+        `${p.numero_unique} ${badgeStatutPlainte(p.statut)}`;
+    document.getElementById('select-statut').value = p.statut;
+    document.getElementById('texte-description').textContent = p.description;
+
+    document.getElementById('fiche-info-conteneur').innerHTML = [
+        champInfo('Nature de l\'infraction', p.nature_infraction),
+        champInfo('Date des faits', p.date_infraction ? new Date(p.date_infraction).toLocaleString('fr-FR') : 'Non précisée'),
+        champInfo('Date d\'enregistrement', new Date(p.date_enregistrement).toLocaleString('fr-FR')),
+        champInfo('Localisation', `${p.quartier_nom ? p.quartier_nom + ', ' : ''}${p.arrondissement_nom ? p.arrondissement_nom + ', ' : ''}${p.ville_nom}`),
+        champInfo('Lieu précis', p.lieu_precis),
+        champInfo('Unité', p.commissariat_nom || p.brigade_nom),
+        champInfo('Déclarant (OPJ)', `${p.declarant_nom} (${p.declarant_matricule})`),
+    ].join('');
+
+    afficherVictimes(data.victimes);
+    afficherTemoins(data.temoins);
+    afficherSuspects(data.suspects);
+    afficherPieces(data.piecesJointes);
+    afficherHistorique(data.historique);
+}
+
+function afficherVictimes(victimes) {
+    const conteneur = document.getElementById('liste-victimes');
+    if (victimes.length === 0) {
+        conteneur.innerHTML = '<div class="info-vide">Aucune victime enregistrée.</div>';
+        return;
+    }
+    conteneur.innerHTML = victimes.map((v) => `
+        <div class="carte-personne">
+            <div class="nom-personne">${v.prenom} ${v.nom}</div>
+            <div style="font-size:13px; color:var(--gris-texte); margin-top:4px;">
+                ${v.telephone ? '📞 ' + v.telephone + ' &nbsp;' : ''}
+                ${v.piece_identite_numero ? '🪪 ' + v.piece_identite_type + ' ' + v.piece_identite_numero : ''}
+            </div>
+            ${v.adresse ? `<div style="font-size:13px; margin-top:4px;">${v.adresse}</div>` : ''}
+            ${v.observations ? `<div style="font-size:13px; margin-top:4px; color:var(--gris-texte);">${v.observations}</div>` : ''}
+        </div>
+    `).join('');
+}
+
+function afficherTemoins(temoins) {
+    const conteneur = document.getElementById('liste-temoins');
+    if (temoins.length === 0) {
+        conteneur.innerHTML = '<div class="info-vide">Aucun témoin enregistré.</div>';
+        return;
+    }
+    conteneur.innerHTML = temoins.map((t) => `
+        <div class="carte-personne">
+            <div class="nom-personne">${t.prenom} ${t.nom}</div>
+            <div style="font-size:13px; color:var(--gris-texte); margin-top:4px;">
+                ${t.telephone ? '📞 ' + t.telephone : ''}
+            </div>
+            ${t.declaration ? `<div style="font-size:13px; margin-top:4px;">${t.declaration}</div>` : ''}
+        </div>
+    `).join('');
+}
+
+function badgeStatutSuspect(statut) {
+    const libelles = {
+        RECHERCHE: ['Recherché', 'statut-inactif'],
+        IDENTIFIE: ['Identifié', 'statut-actif'],
+        INTERPELLE: ['Interpellé', 'statut-actif'],
+        MIS_HORS_DE_CAUSE: ['Mis hors de cause', 'statut-inactif'],
+    };
+    const [label, classe] = libelles[statut] || [statut, 'statut-inactif'];
+    return `<span class="statut-pill ${classe}">${label}</span>`;
+}
+
+function afficherSuspects(suspects) {
+    const conteneur = document.getElementById('liste-suspects');
+    if (suspects.length === 0) {
+        conteneur.innerHTML = '<div class="info-vide">Aucun suspect enregistré.</div>';
+        return;
+    }
+    conteneur.innerHTML = suspects.map((s) => `
+        <div class="carte-personne">
+            <div class="nom-personne">${s.prenom || ''} ${s.nom || s.surnom || 'Identité inconnue'} ${badgeStatutSuspect(s.statut)}</div>
+            ${s.description_physique ? `<div style="font-size:13px; margin-top:4px;">${s.description_physique}</div>` : ''}
+            <div style="margin-top:8px;">
+                <select onchange="changerStatutSuspect(${s.id}, this.value)" style="padding:4px 8px; font-size:12px; border-radius:4px; border:1px solid var(--gris-bordure);">
+                    <option value="RECHERCHE" ${s.statut === 'RECHERCHE' ? 'selected' : ''}>Recherché</option>
+                    <option value="IDENTIFIE" ${s.statut === 'IDENTIFIE' ? 'selected' : ''}>Identifié</option>
+                    <option value="INTERPELLE" ${s.statut === 'INTERPELLE' ? 'selected' : ''}>Interpellé</option>
+                    <option value="MIS_HORS_DE_CAUSE" ${s.statut === 'MIS_HORS_DE_CAUSE' ? 'selected' : ''}>Mis hors de cause</option>
+                </select>
+            </div>
+        </div>
+    `).join('');
+}
+
+async function changerStatutSuspect(suspectId, statut) {
+    const res = await apiFetch(`/plaintes/${idPlainte}/suspects/${suspectId}/statut`, {
+        method: 'POST', body: JSON.stringify({ statut }),
+    });
+    if (res && res.ok) chargerDetailPlainte();
+}
+
+function formatTaille(octets) {
+    if (octets < 1024) return octets + ' o';
+    if (octets < 1024 * 1024) return (octets / 1024).toFixed(1) + ' Ko';
+    return (octets / (1024 * 1024)).toFixed(1) + ' Mo';
+}
+
+function afficherPieces(pieces) {
+    const conteneur = document.getElementById('liste-pieces');
+    if (pieces.length === 0) {
+        conteneur.innerHTML = '<div class="info-vide">Aucune pièce jointe.</div>';
+        return;
+    }
+    conteneur.innerHTML = pieces.map((pj) => `
+        <div class="carte-personne" style="display:flex; justify-content:space-between; align-items:center;">
+            <div>
+                <div class="nom-personne">${pj.nom_original}</div>
+                <div style="font-size:12px; color:var(--gris-texte); margin-top:2px;">
+                    ${formatTaille(pj.taille_octets)} — ajouté par ${pj.uploaded_by_nom} le ${new Date(pj.created_at).toLocaleDateString('fr-FR')}
+                </div>
+            </div>
+            <div>
+                <button class="bouton-petit" onclick="telechargerPiece(${pj.id})">Télécharger</button>
+                <button class="bouton-petit danger" onclick="supprimerPiece(${pj.id})">Supprimer</button>
+            </div>
+        </div>
+    `).join('');
+}
+
+async function telechargerPiece(pieceId) {
+    const token = Auth.getToken();
+    const sessionId = Auth.getSessionId();
+    const url = `/api/plaintes/${idPlainte}/pieces-jointes/${pieceId}/telecharger`;
+
+    const res = await fetch(url, {
+        headers: { 'Authorization': `Bearer ${token}`, 'X-Session-Id': sessionId || '' },
+    });
+    if (!res.ok) { alert('Impossible de télécharger ce fichier.'); return; }
+    const blob = await res.blob();
+    const lienTelechargement = document.createElement('a');
+    lienTelechargement.href = window.URL.createObjectURL(blob);
+    const dispositionEntete = res.headers.get('Content-Disposition') || '';
+    const correspondance = dispositionEntete.match(/filename="?([^"]+)"?/);
+    lienTelechargement.download = correspondance ? correspondance[1] : 'document';
+    document.body.appendChild(lienTelechargement);
+    lienTelechargement.click();
+    lienTelechargement.remove();
+}
+
+async function supprimerPiece(pieceId) {
+    if (!confirm('Confirmer la suppression de cette pièce jointe ?')) return;
+    const res = await apiFetch(`/plaintes/${idPlainte}/pieces-jointes/${pieceId}`, { method: 'DELETE' });
+    if (res && res.ok) chargerDetailPlainte();
+}
+
+function afficherHistorique(historique) {
+    const conteneur = document.getElementById('liste-historique');
+    if (historique.length === 0) {
+        conteneur.innerHTML = '<div class="info-vide">Aucune action enregistrée.</div>';
+        return;
+    }
+    conteneur.innerHTML = historique.map((h) => `
+        <div class="entree-historique">
+            <strong>${h.action}</strong> — ${h.description || ''}
+            <div class="meta">Par ${h.user_nom} — ${new Date(h.created_at).toLocaleString('fr-FR')}</div>
+        </div>
+    `).join('');
+}
+
+// --- Changement de statut global ---
+document.getElementById('btn-changer-statut').addEventListener('click', async () => {
+    const statut = document.getElementById('select-statut').value;
+    const res = await apiFetch(`/plaintes/${idPlainte}/statut`, {
+        method: 'POST', body: JSON.stringify({ statut }),
+    });
+    if (!res) return;
+    if (res.ok) chargerDetailPlainte();
+    else { const d = await res.json(); alert(d.message || 'Erreur lors du changement de statut.'); }
+});
+
+// --- Modales génériques (ouverture/fermeture) ---
+document.getElementById('btn-ajouter-victime').addEventListener('click', () => document.getElementById('modal-victime').classList.add('visible'));
+document.getElementById('btn-ajouter-temoin').addEventListener('click', () => document.getElementById('modal-temoin').classList.add('visible'));
+document.getElementById('btn-ajouter-suspect').addEventListener('click', () => document.getElementById('modal-suspect').classList.add('visible'));
+
+document.querySelectorAll('[data-fermer]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+        const modal = document.getElementById(btn.dataset.fermer);
+        modal.classList.remove('visible');
+        modal.querySelector('form')?.reset();
+    });
+});
+
+// --- Soumission Victime ---
+document.getElementById('form-victime').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    masquerErreur('erreur-victime');
+    const payload = {
+        nom: document.getElementById('v-nom').value.trim(),
+        prenom: document.getElementById('v-prenom').value.trim(),
+        date_naissance: document.getElementById('v-date-naissance').value || null,
+        sexe: document.getElementById('v-sexe').value || null,
+        telephone: document.getElementById('v-telephone').value.trim() || null,
+        adresse: document.getElementById('v-adresse').value.trim() || null,
+        piece_identite_numero: document.getElementById('v-piece').value.trim() || null,
+        observations: document.getElementById('v-observations').value.trim() || null,
+    };
+    const res = await apiFetch(`/plaintes/${idPlainte}/victimes`, { method: 'POST', body: JSON.stringify(payload) });
+    if (!res) return;
+    const data = await res.json();
+    if (!res.ok) { afficherErreur('erreur-victime', data.message); return; }
+    document.getElementById('modal-victime').classList.remove('visible');
+    document.getElementById('form-victime').reset();
+    chargerDetailPlainte();
+});
+
+// --- Soumission Témoin ---
+document.getElementById('form-temoin').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    masquerErreur('erreur-temoin');
+    const payload = {
+        nom: document.getElementById('t-nom').value.trim(),
+        prenom: document.getElementById('t-prenom').value.trim(),
+        telephone: document.getElementById('t-telephone').value.trim() || null,
+        adresse: document.getElementById('t-adresse').value.trim() || null,
+        declaration: document.getElementById('t-declaration').value.trim() || null,
+    };
+    const res = await apiFetch(`/plaintes/${idPlainte}/temoins`, { method: 'POST', body: JSON.stringify(payload) });
+    if (!res) return;
+    const data = await res.json();
+    if (!res.ok) { afficherErreur('erreur-temoin', data.message); return; }
+    document.getElementById('modal-temoin').classList.remove('visible');
+    document.getElementById('form-temoin').reset();
+    chargerDetailPlainte();
+});
+
+// --- Soumission Suspect ---
+document.getElementById('form-suspect').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    masquerErreur('erreur-suspect');
+    const payload = {
+        nom: document.getElementById('s-nom').value.trim() || null,
+        prenom: document.getElementById('s-prenom').value.trim() || null,
+        surnom: document.getElementById('s-surnom').value.trim() || null,
+        description_physique: document.getElementById('s-description').value.trim() || null,
+        date_naissance: document.getElementById('s-date-naissance').value || null,
+        statut: document.getElementById('s-statut').value,
+        adresse: document.getElementById('s-adresse').value.trim() || null,
+        observations: document.getElementById('s-observations').value.trim() || null,
+    };
+    const res = await apiFetch(`/plaintes/${idPlainte}/suspects`, { method: 'POST', body: JSON.stringify(payload) });
+    if (!res) return;
+    const data = await res.json();
+    if (!res.ok) { afficherErreur('erreur-suspect', data.message); return; }
+    document.getElementById('modal-suspect').classList.remove('visible');
+    document.getElementById('form-suspect').reset();
+    chargerDetailPlainte();
+});
+
+// --- Téléversement de pièce jointe ---
+document.getElementById('btn-ajouter-piece').addEventListener('click', () => {
+    document.getElementById('input-fichier').click();
+});
+
+document.getElementById('input-fichier').addEventListener('change', async (e) => {
+    const fichier = e.target.files[0];
+    if (!fichier) return;
+    masquerErreur('erreur-piece');
+
+    const formData = new FormData();
+    formData.append('fichier', fichier);
+
+    const token = Auth.getToken();
+    const sessionId = Auth.getSessionId();
+
+    try {
+        const res = await fetch(`/api/plaintes/${idPlainte}/pieces-jointes`, {
+            method: 'POST',
+            headers: { 'Authorization': `Bearer ${token}`, 'X-Session-Id': sessionId || '' },
+            body: formData,
+        });
+        const data = await res.json();
+        if (!res.ok) {
+            afficherErreur('erreur-piece', data.message || "Erreur lors de l'envoi du fichier.");
+            return;
+        }
+        chargerDetailPlainte();
+    } catch (err) {
+        afficherErreur('erreur-piece', 'Impossible de contacter le serveur.');
+    } finally {
+        e.target.value = '';
+    }
+});
+
+chargerDetailPlainte();
+</script>
+
+</body>
+</html>

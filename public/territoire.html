@@ -1,0 +1,256 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Gestion territoriale — Plateforme Justice &amp; Sécurité</title>
+<link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+
+<script src="/js/api.js"></script>
+<script src="/js/layout.js"></script>
+<script>injecterLayout('territoire', 'Gestion territoriale');</script>
+
+<script>
+definirContenuPage(`
+    <div class="panneau">
+        <div class="panneau-entete">
+            <h3>Départements de la République du Congo</h3>
+        </div>
+        <div id="zone-chargement-dep" class="chargement">Chargement...</div>
+        <table id="tableau-dep" style="display:none;">
+            <thead><tr><th>Code</th><th>Nom</th><th>Chef-lieu</th><th>Villes</th></tr></thead>
+            <tbody id="corps-tableau-dep"></tbody>
+        </table>
+    </div>
+
+    <div class="panneau">
+        <div class="panneau-entete">
+            <h3>Villes — détail par département</h3>
+        </div>
+        <div class="corps-modal" style="padding: 18px 22px;">
+            <div class="champ" style="max-width: 320px;">
+                <label for="select-departement-villes">Choisir un département</label>
+                <select id="select-departement-villes">
+                    <option value="">Sélectionner...</option>
+                </select>
+            </div>
+        </div>
+        <table id="tableau-villes" style="display:none;">
+            <thead><tr><th>Code</th><th>Nom de la ville</th></tr></thead>
+            <tbody id="corps-tableau-villes"></tbody>
+        </table>
+        <div id="info-villes-vide" class="info-vide" style="display:none;">
+            Aucune ville enregistrée pour ce département. Utilisez le formulaire ci-dessous pour en ajouter.
+        </div>
+    </div>
+
+    <div class="panneau">
+        <div class="panneau-entete">
+            <h3>Ajouter une entité territoriale</h3>
+        </div>
+        <form id="form-territoire" style="padding: 18px 22px;">
+            <div id="erreur-territoire" class="message-erreur"></div>
+            <div id="succes-territoire" class="message-succes"></div>
+
+            <div class="champ">
+                <label for="t-niveau">Type d'entité à créer</label>
+                <select id="t-niveau">
+                    <option value="ville">Ville (sous un département)</option>
+                    <option value="arrondissement">Arrondissement (sous une ville)</option>
+                    <option value="quartier">Quartier (sous un arrondissement)</option>
+                </select>
+            </div>
+
+            <div class="grille-deux-colonnes">
+                <div class="champ" id="champ-parent-departement">
+                    <label for="t-departement">Département parent</label>
+                    <select id="t-departement"><option value="">Sélectionner...</option></select>
+                </div>
+                <div class="champ" id="champ-parent-ville" style="display:none;">
+                    <label for="t-ville">Ville parente</label>
+                    <select id="t-ville"><option value="">Sélectionner...</option></select>
+                </div>
+                <div class="champ" id="champ-parent-arrondissement" style="display:none;">
+                    <label for="t-arrondissement">Arrondissement parent</label>
+                    <select id="t-arrondissement"><option value="">Sélectionner...</option></select>
+                </div>
+            </div>
+
+            <div class="grille-deux-colonnes">
+                <div class="champ">
+                    <label for="t-nom">Nom</label>
+                    <input type="text" id="t-nom" required>
+                </div>
+                <div class="champ" id="champ-code">
+                    <label for="t-code">Code</label>
+                    <input type="text" id="t-code">
+                </div>
+            </div>
+
+            <button type="submit" class="bouton-petit primaire" id="btn-creer-territoire">Créer</button>
+        </form>
+    </div>
+`);
+
+let departementsCache = [];
+
+async function chargerDepartements() {
+    const zoneChargement = document.getElementById('zone-chargement-dep');
+    const tableau = document.getElementById('tableau-dep');
+    try {
+        const res = await apiFetch('/territoire/departements');
+        if (!res) return;
+        if (!res.ok) {
+            zoneChargement.textContent = "Vous n'avez pas les droits pour consulter le territoire.";
+            return;
+        }
+        const data = await res.json();
+        departementsCache = data.departements;
+        zoneChargement.style.display = 'none';
+        tableau.style.display = 'table';
+
+        const corps = document.getElementById('corps-tableau-dep');
+        corps.innerHTML = data.departements.map((d) => `
+            <tr>
+                <td>${d.code}</td>
+                <td>${d.nom}</td>
+                <td>${d.chef_lieu || '—'}</td>
+                <td><button class="bouton-petit" onclick="afficherVillesDepartement(${d.id})">Voir les villes</button></td>
+            </tr>
+        `).join('');
+
+        // Remplir les sélecteurs de département (vue villes + formulaire)
+        const optionsHtml = '<option value="">Sélectionner...</option>' +
+            data.departements.map((d) => `<option value="${d.id}">${d.nom}</option>`).join('');
+        document.getElementById('select-departement-villes').innerHTML = optionsHtml;
+        document.getElementById('t-departement').innerHTML = optionsHtml;
+    } catch (err) {
+        zoneChargement.textContent = 'Erreur lors du chargement.';
+    }
+}
+
+async function afficherVillesDepartement(departementId) {
+    document.getElementById('select-departement-villes').value = departementId;
+    await chargerVillesPourAffichage(departementId);
+}
+
+async function chargerVillesPourAffichage(departementId) {
+    const tableau = document.getElementById('tableau-villes');
+    const infoVide = document.getElementById('info-villes-vide');
+    if (!departementId) {
+        tableau.style.display = 'none';
+        infoVide.style.display = 'none';
+        return;
+    }
+    const res = await apiFetch(`/territoire/departements/${departementId}/villes`);
+    if (!res || !res.ok) return;
+    const data = await res.json();
+
+    if (data.villes.length === 0) {
+        tableau.style.display = 'none';
+        infoVide.style.display = 'block';
+        return;
+    }
+    infoVide.style.display = 'none';
+    tableau.style.display = 'table';
+    document.getElementById('corps-tableau-villes').innerHTML = data.villes.map((v) => `
+        <tr><td>${v.code}</td><td>${v.nom}</td></tr>
+    `).join('');
+}
+
+document.getElementById('select-departement-villes').addEventListener('change', (e) => {
+    chargerVillesPourAffichage(e.target.value);
+});
+
+// --- Formulaire dynamique de création (ville / arrondissement / quartier) ---
+const selectNiveau = document.getElementById('t-niveau');
+const champParentDept = document.getElementById('champ-parent-departement');
+const champParentVille = document.getElementById('champ-parent-ville');
+const champParentArr = document.getElementById('champ-parent-arrondissement');
+const champCode = document.getElementById('champ-code');
+
+selectNiveau.addEventListener('change', () => {
+    const niveau = selectNiveau.value;
+    champParentDept.style.display = niveau === 'ville' ? 'block' : 'none';
+    champParentVille.style.display = niveau === 'arrondissement' ? 'block' : 'none';
+    champParentArr.style.display = niveau === 'quartier' ? 'block' : 'none';
+    champCode.style.display = niveau === 'quartier' ? 'none' : 'block';
+
+    if (niveau === 'arrondissement') chargerVillesPourSelectParent();
+    if (niveau === 'quartier') chargerArrondissementsPourSelectParent();
+});
+
+async function chargerVillesPourSelectParent() {
+    // Charge toutes les villes de tous les départements pour le select parent "ville"
+    const select = document.getElementById('t-ville');
+    select.innerHTML = '<option value="">Chargement...</option>';
+    let toutesLesVilles = [];
+    for (const dep of departementsCache) {
+        const res = await apiFetch(`/territoire/departements/${dep.id}/villes`);
+        if (res && res.ok) {
+            const data = await res.json();
+            toutesLesVilles = toutesLesVilles.concat(data.villes.map((v) => ({ ...v, departementNom: dep.nom })));
+        }
+    }
+    select.innerHTML = '<option value="">Sélectionner...</option>' +
+        toutesLesVilles.map((v) => `<option value="${v.id}">${v.nom} (${v.departementNom})</option>`).join('');
+}
+
+async function chargerArrondissementsPourSelectParent() {
+    const select = document.getElementById('t-arrondissement');
+    select.innerHTML = '<option value="">Sélectionnez une ville d\'abord dans l\'onglet villes</option>';
+    // Approche simplifiée pour le socle : l'utilisateur sélectionne d'abord une ville via le menu villes ci-dessus
+    const villeId = document.getElementById('select-departement-villes').value;
+    if (!villeId) return;
+}
+
+document.getElementById('form-territoire').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    masquerErreur('erreur-territoire');
+
+    const niveau = selectNiveau.value;
+    const nom = document.getElementById('t-nom').value.trim();
+    const code = document.getElementById('t-code').value.trim();
+
+    let endpoint, payload;
+    if (niveau === 'ville') {
+        endpoint = '/territoire/villes';
+        payload = { departement_id: parseInt(document.getElementById('t-departement').value, 10), nom, code };
+    } else if (niveau === 'arrondissement') {
+        endpoint = '/territoire/arrondissements';
+        payload = { ville_id: parseInt(document.getElementById('t-ville').value, 10), nom, code };
+    } else {
+        endpoint = '/territoire/quartiers';
+        payload = { arrondissement_id: parseInt(document.getElementById('t-arrondissement').value, 10), nom };
+    }
+
+    const btn = document.getElementById('btn-creer-territoire');
+    btn.disabled = true;
+
+    try {
+        const res = await apiFetch(endpoint, { method: 'POST', body: JSON.stringify(payload) });
+        if (!res) return;
+        const data = await res.json();
+
+        if (!res.ok) {
+            afficherErreur('erreur-territoire', data.message || 'Erreur lors de la création.');
+            return;
+        }
+
+        afficherSucces('succes-territoire', 'Entité territoriale créée avec succès.');
+        document.getElementById('form-territoire').reset();
+        chargerDepartements();
+    } catch (err) {
+        afficherErreur('erreur-territoire', 'Impossible de contacter le serveur.');
+    } finally {
+        btn.disabled = false;
+    }
+});
+
+chargerDepartements();
+</script>
+
+</body>
+</html>

@@ -1,0 +1,307 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Brigades — Plateforme Justice &amp; Sécurité</title>
+<link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+
+<script src="/js/api.js"></script>
+<script src="/js/layout.js"></script>
+<script>injecterLayout('brigades', 'Brigades de gendarmerie');</script>
+
+<script>
+definirContenuPage(`
+    <div class="panneau">
+        <div class="panneau-entete">
+            <h3>Liste des brigades</h3>
+            <button class="bouton-petit primaire" id="btn-nouvelle-brigade">+ Nouvelle brigade</button>
+        </div>
+        <div id="zone-chargement-brig" class="chargement">Chargement...</div>
+        <table id="tableau-brig" style="display:none;">
+            <thead>
+                <tr>
+                    <th>Code</th><th>Nom</th><th>Type</th><th>Localisation</th>
+                    <th>Effectif</th><th>Statut</th><th>Actions</th>
+                </tr>
+            </thead>
+            <tbody id="corps-tableau-brig"></tbody>
+        </table>
+    </div>
+
+    <div class="overlay-modal" id="modal-brigade">
+        <div class="contenu-modal">
+            <div class="entete-modal">
+                <h3>Nouvelle brigade</h3>
+                <button class="fermer-modal" id="fermer-modal-brig">&times;</button>
+            </div>
+            <form id="form-brigade">
+                <div class="corps-modal">
+                    <div id="erreur-brig" class="message-erreur"></div>
+
+                    <div class="grille-deux-colonnes">
+                        <div class="champ">
+                            <label for="b-nom">Nom</label>
+                            <input type="text" id="b-nom" required>
+                        </div>
+                        <div class="champ">
+                            <label for="b-code">Code unique</label>
+                            <input type="text" id="b-code" required>
+                        </div>
+                    </div>
+
+                    <div class="champ">
+                        <label for="b-type">Type</label>
+                        <select id="b-type">
+                            <option value="TERRITORIALE" selected>Territoriale</option>
+                            <option value="MOBILE">Mobile</option>
+                            <option value="FRONTALIERE">Frontalière</option>
+                            <option value="FLUVIALE">Fluviale</option>
+                        </select>
+                    </div>
+
+                    <div class="grille-deux-colonnes">
+                        <div class="champ">
+                            <label for="b-departement">Département</label>
+                            <select id="b-departement" required>
+                                <option value="">Sélectionner...</option>
+                            </select>
+                        </div>
+                        <div class="champ">
+                            <label for="b-ville">Ville</label>
+                            <select id="b-ville" required>
+                                <option value="">Sélectionner un département d'abord</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="grille-deux-colonnes">
+                        <div class="champ">
+                            <label for="b-arrondissement">Arrondissement</label>
+                            <select id="b-arrondissement">
+                                <option value="">Sélectionner une ville d'abord</option>
+                            </select>
+                        </div>
+                        <div class="champ">
+                            <label for="b-quartier">Quartier</label>
+                            <select id="b-quartier">
+                                <option value="">Sélectionner un arrondissement d'abord</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="champ">
+                        <label for="b-adresse">Adresse complète</label>
+                        <input type="text" id="b-adresse">
+                    </div>
+
+                    <div class="grille-deux-colonnes">
+                        <div class="champ">
+                            <label for="b-telephone">Téléphone</label>
+                            <input type="text" id="b-telephone">
+                        </div>
+                        <div class="champ">
+                            <label for="b-email">Email officiel</label>
+                            <input type="email" id="b-email">
+                        </div>
+                    </div>
+
+                    <div class="grille-deux-colonnes">
+                        <div class="champ">
+                            <label for="b-opj">Nombre d'OPJ</label>
+                            <input type="number" id="b-opj" min="0" value="0">
+                        </div>
+                        <div class="champ">
+                            <label for="b-apj">Nombre d'APJ</label>
+                            <input type="number" id="b-apj" min="0" value="0">
+                        </div>
+                    </div>
+                    <div class="champ">
+                        <label for="b-agents">Nombre total d'agents</label>
+                        <input type="number" id="b-agents" min="0" value="0">
+                    </div>
+                </div>
+                <div class="pied-modal">
+                    <button type="button" class="bouton-petit" id="annuler-brig">Annuler</button>
+                    <button type="submit" class="bouton-petit primaire" id="btn-creer-brig">Créer</button>
+                </div>
+            </form>
+        </div>
+    </div>
+`);
+
+async function chargerDepartementsPourFormulaireBrigade() {
+    const res = await apiFetch('/territoire/departements');
+    if (!res || !res.ok) return;
+    const data = await res.json();
+    const select = document.getElementById('b-departement');
+    select.innerHTML = '<option value="">Sélectionner...</option>' +
+        data.departements.map((d) => `<option value="${d.id}">${d.nom}</option>`).join('');
+}
+
+document.getElementById('b-departement').addEventListener('change', async (e) => {
+    const villeSelect = document.getElementById('b-ville');
+    const arrSelect = document.getElementById('b-arrondissement');
+    const quartierSelect = document.getElementById('b-quartier');
+    const departementId = e.target.value;
+
+    arrSelect.innerHTML = '<option value="">Sélectionner une ville d\'abord</option>';
+    quartierSelect.innerHTML = '<option value="">Sélectionner un arrondissement d\'abord</option>';
+
+    if (!departementId) {
+        villeSelect.innerHTML = '<option value="">Sélectionner un département d\'abord</option>';
+        return;
+    }
+    const res = await apiFetch(`/territoire/departements/${departementId}/villes`);
+    if (!res || !res.ok) return;
+    const data = await res.json();
+    villeSelect.innerHTML = '<option value="">Sélectionner...</option>' +
+        data.villes.map((v) => `<option value="${v.id}">${v.nom}</option>`).join('');
+});
+
+document.getElementById('b-ville').addEventListener('change', async (e) => {
+    const arrSelect = document.getElementById('b-arrondissement');
+    const quartierSelect = document.getElementById('b-quartier');
+    const villeId = e.target.value;
+
+    quartierSelect.innerHTML = '<option value="">Sélectionner un arrondissement d\'abord</option>';
+
+    if (!villeId) {
+        arrSelect.innerHTML = '<option value="">Sélectionner une ville d\'abord</option>';
+        return;
+    }
+    const res = await apiFetch(`/territoire/villes/${villeId}/arrondissements`);
+    if (!res || !res.ok) return;
+    const data = await res.json();
+    arrSelect.innerHTML = '<option value="">Aucun / non précisé</option>' +
+        data.arrondissements.map((a) => `<option value="${a.id}">${a.nom}</option>`).join('');
+});
+
+document.getElementById('b-arrondissement').addEventListener('change', async (e) => {
+    const quartierSelect = document.getElementById('b-quartier');
+    const arrondissementId = e.target.value;
+
+    if (!arrondissementId) {
+        quartierSelect.innerHTML = '<option value="">Sélectionner un arrondissement d\'abord</option>';
+        return;
+    }
+    const res = await apiFetch(`/territoire/arrondissements/${arrondissementId}/quartiers`);
+    if (!res || !res.ok) return;
+    const data = await res.json();
+    quartierSelect.innerHTML = '<option value="">Aucun / non précisé</option>' +
+        data.quartiers.map((q) => `<option value="${q.id}">${q.nom}</option>`).join('');
+});
+
+function badgeStatutBrigade(statut) {
+    return statut === 'ACTIF'
+        ? '<span class="statut-pill statut-actif">Actif</span>'
+        : '<span class="statut-pill statut-inactif">Inactif</span>';
+}
+
+async function chargerBrigades() {
+    const zoneChargement = document.getElementById('zone-chargement-brig');
+    const tableau = document.getElementById('tableau-brig');
+    try {
+        const res = await apiFetch('/brigades');
+        if (!res) return;
+        if (!res.ok) {
+            zoneChargement.textContent = "Vous n'avez pas les droits pour consulter cette liste.";
+            return;
+        }
+        const data = await res.json();
+        zoneChargement.style.display = 'none';
+        tableau.style.display = 'table';
+
+        const corps = document.getElementById('corps-tableau-brig');
+        if (data.brigades.length === 0) {
+            corps.innerHTML = `<tr><td colspan="7"><div class="info-vide">Aucune brigade enregistrée.</div></td></tr>`;
+            return;
+        }
+
+        corps.innerHTML = data.brigades.map((b) => `
+            <tr>
+                <td>${b.code}</td>
+                <td>${b.nom}</td>
+                <td>${b.type}</td>
+                <td>${b.ville_nom}, ${b.departement_nom}</td>
+                <td>${b.nombre_agents_total}</td>
+                <td>${badgeStatutBrigade(b.statut)}</td>
+                <td>
+                    ${b.statut === 'ACTIF'
+                        ? `<button class="bouton-petit danger" onclick="changerStatutBrigade(${b.id}, 'deactivate')">Désactiver</button>`
+                        : `<button class="bouton-petit" onclick="changerStatutBrigade(${b.id}, 'reactivate')">Réactiver</button>`}
+                </td>
+            </tr>
+        `).join('');
+    } catch (err) {
+        zoneChargement.textContent = 'Erreur lors du chargement.';
+    }
+}
+
+async function changerStatutBrigade(id, action) {
+    const res = await apiFetch(`/brigades/${id}/${action}`, { method: 'POST' });
+    if (!res) return;
+    if (res.ok) chargerBrigades();
+}
+
+document.getElementById('btn-nouvelle-brigade').addEventListener('click', () => {
+    document.getElementById('modal-brigade').classList.add('visible');
+});
+document.getElementById('fermer-modal-brig').addEventListener('click', fermerModalBrigade);
+document.getElementById('annuler-brig').addEventListener('click', fermerModalBrigade);
+
+function fermerModalBrigade() {
+    document.getElementById('modal-brigade').classList.remove('visible');
+    document.getElementById('form-brigade').reset();
+    masquerErreur('erreur-brig');
+}
+
+document.getElementById('form-brigade').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    masquerErreur('erreur-brig');
+
+    const payload = {
+        nom: document.getElementById('b-nom').value.trim(),
+        code: document.getElementById('b-code').value.trim(),
+        type: document.getElementById('b-type').value,
+        departement_id: parseInt(document.getElementById('b-departement').value, 10),
+        ville_id: parseInt(document.getElementById('b-ville').value, 10),
+        quartier_id: document.getElementById('b-quartier').value ? parseInt(document.getElementById('b-quartier').value, 10) : null,
+        adresse_complete: document.getElementById('b-adresse').value.trim() || null,
+        telephone: document.getElementById('b-telephone').value.trim() || null,
+        email_officiel: document.getElementById('b-email').value.trim() || null,
+        nombre_opj: parseInt(document.getElementById('b-opj').value, 10) || 0,
+        nombre_apj: parseInt(document.getElementById('b-apj').value, 10) || 0,
+        nombre_agents_total: parseInt(document.getElementById('b-agents').value, 10) || 0,
+    };
+
+    const btn = document.getElementById('btn-creer-brig');
+    btn.disabled = true;
+
+    try {
+        const res = await apiFetch('/brigades', { method: 'POST', body: JSON.stringify(payload) });
+        if (!res) return;
+        const data = await res.json();
+
+        if (!res.ok) {
+            afficherErreur('erreur-brig', data.message || 'Erreur lors de la création.');
+            return;
+        }
+
+        fermerModalBrigade();
+        chargerBrigades();
+    } catch (err) {
+        afficherErreur('erreur-brig', 'Impossible de contacter le serveur.');
+    } finally {
+        btn.disabled = false;
+    }
+});
+
+chargerDepartementsPourFormulaireBrigade();
+chargerBrigades();
+</script>
+
+</body>
+</html>
