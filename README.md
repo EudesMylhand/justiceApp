@@ -200,9 +200,8 @@ en console.
 - Gestion pénitentiaire
 - Statistiques décisionnelles avancées
 
-====================================
-# ==========================================
-# Auteur: Eudes Mylhand
-# Date:
-#
-# ==========================================
+==================================== ==========================================
+
+- Auteur: Eudes Mylhand
+- Date:21/06/2026
+- App Web: Justice
