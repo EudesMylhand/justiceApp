@@ -8,13 +8,38 @@ const path = require('path');
 const { testConnection } = require('../config/database');
 const { errorHandler } = require('./middlewares/errorHandler');
 
-const authRoutes = require('./routes/authRoutes');
-const userRoutes = require('./routes/userRoutes');
-const territoireRoutes = require('./routes/territoireRoutes');
-const commissariatRoutes = require('./routes/commissariatRoutes');
-const brigadeRoutes = require('./routes/brigadeRoutes');
-const dashboardRoutes = require('./routes/dashboardRoutes');
-const plainteRoutes = require('./routes/plainteRoutes');
+/**
+ * Normalise un import de routeur Express.
+ *
+ * Cause racine du crash "Router.use() requires a middleware function but got a Object" :
+ * un fichier de routes exporte un OBJET (`module.exports = { router }`) au lieu du
+ * routeur lui-même (`module.exports = router`). Express attend une fonction.
+ *
+ * Ce helper accepte les trois formes courantes et renvoie toujours une fonction
+ * middleware valide, sinon il échoue avec un message explicite indiquant le coupable.
+ */
+function resolveRouter(mod, name) {
+    // module.exports = router  (forme attendue)
+    if (typeof mod === 'function') return mod;
+    // module.exports = { router }
+    if (mod && typeof mod.router === 'function') return mod.router;
+    // export default (code transpilé ESM -> CommonJS)
+    if (mod && typeof mod.default === 'function') return mod.default;
+
+    throw new TypeError(
+        `[routes] "${name}" doit exporter un routeur Express (une fonction), ` +
+        `mais a exporté: ${mod === null ? 'null' : typeof mod}. ` +
+        `Corrigez le fichier avec "module.exports = router;".`
+    );
+}
+
+const authRoutes = resolveRouter(require('./routes/authRoutes'), 'authRoutes');
+const userRoutes = resolveRouter(require('./routes/userRoutes'), 'userRoutes');
+const territoireRoutes = resolveRouter(require('./routes/territoireRoutes'), 'territoireRoutes');
+const commissariatRoutes = resolveRouter(require('./routes/commissariatRoutes'), 'commissariatRoutes');
+const brigadeRoutes = resolveRouter(require('./routes/brigadeRoutes'), 'brigadeRoutes');
+const dashboardRoutes = resolveRouter(require('./routes/dashboardRoutes'), 'dashboardRoutes');
+const plainteRoutes = resolveRouter(require('./routes/plainteRoutes'), 'plainteRoutes');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
